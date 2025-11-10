@@ -13,7 +13,7 @@ def main():
     
     # Crear ventana
     screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-    pygame.display.set_caption("Space Invaders")
+    pygame.display.set_caption("My Space Invaders 🚀")
     
     # Cargar fuentes
     font = pygame.font.Font(None, 36)
