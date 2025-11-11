@@ -3,8 +3,7 @@ import random
 import os
 
 class Game:
-    def __init__(self, font, FPS, lives, window, screen_width, screen_height, 
-                 bullets=0, clock=None, bullet_img=None, spaceship_img=None):
+    def __init__(self, font, FPS, lives, window, screen_width, screen_height, bullets=0, clock=None, bullet_img=None, spaceship_img=None):
         self.font = font
         self.HEIGHT = screen_height
         self.WIDTH = screen_width
@@ -124,19 +123,31 @@ class Game:
     def update_enemies(self):
         """Actualizar posición de enemigos"""
         move_down = False
-        
-        for enemy in self.enemies:
-            enemy['rect'].x += self.enemy_speed * self.enemy_direction
-            
-            # Verificar si algún enemigo llegó al borde
-            if enemy['rect'].right >= self.WIDTH or enemy['rect'].left <= 0:
-                move_down = True
-        
-        if move_down:
-            self.enemy_direction *= -1
-            for enemy in self.enemies:
-                enemy['rect'].y += 20
+        edge_hit = False
     
+        # PRIMERO: Solo verificar si hay enemigos en el borde (sin mover todavía)
+        for enemy in self.enemies:
+            if enemy['rect'].right >= self.WIDTH or enemy['rect'].left <= 0:
+                edge_hit = True
+                break
+    
+        # SEGUNDO: Si hay enemigo en el borde, preparar movimiento hacia abajo
+        if edge_hit:
+            self.enemy_direction *= -1
+            move_down = True
+    
+        # TERCERO: Ahora mover todos los enemigos
+        for enemy in self.enemies:
+            # Mover horizontalmente
+            enemy['rect'].x += self.enemy_speed * self.enemy_direction
+        
+            # Mover verticalmente SOLO si es necesario
+            if move_down:
+                # Ajuste más conservador para la caída
+                drop_amount = max(8, 20 - (self.level * 1.3))
+                enemy['rect'].y += drop_amount
+    
+
     def update_player_bullets(self):
         """Actualizar posición de balas del jugador"""
         for bullet in self.player_bullets[:]:
@@ -174,37 +185,52 @@ class Game:
     
     def check_collisions(self):
         """Verificar colisiones entre balas y enemigos/jugador"""
-        # Colisiones balas del jugador con enemigos
         player_rect = pygame.Rect(self.player_x, self.player_y, self.player_width, self.player_height)
-        
-        for bullet in self.player_bullets[:]:
-            for enemy in self.enemies[:]:
+    
+        # Colisiones balas del jugador con enemigos
+        bullets_to_remove = []
+        enemies_to_remove = []
+    
+        for bullet in self.player_bullets:
+            for enemy in self.enemies:
                 if bullet.colliderect(enemy['rect']):
-                    if bullet in self.player_bullets:
-                        self.player_bullets.remove(bullet)
-                    self.enemies.remove(enemy)
-                    self.score += 10
+                    bullets_to_remove.append(bullet)
+                    enemies_to_remove.append(enemy)
+                    self.score += 10 + (self.level * 2)
                     break
-        
+    
+        # Remover elementos después de iterar
+        for bullet in bullets_to_remove:
+            if bullet in self.player_bullets:
+                self.player_bullets.remove(bullet)
+    
+        for enemy in enemies_to_remove:
+            if enemy in self.enemies:
+                self.enemies.remove(enemy)
+    
         # Colisiones balas enemigas con jugador
         for bullet in self.enemy_bullets[:]:
             if bullet.colliderect(player_rect):
                 self.enemy_bullets.remove(bullet)
                 self.lives -= 1
-                break
     
     def check_game_conditions(self):
         """Verificar condiciones de victoria o derrota"""
         # Verificar si el jugador perdió
         if self.lives <= 0:
             self.game_over = True
+            return
         
-        # Verificar si los enemigos llegaron al fondo
+        # Verificar si los enemigos llegaron cerca del jugador
+        player_rect = pygame.Rect(self.player_x, self.player_y, self.player_width, self.player_height)
+        safety_margin = 50  # Aumentar margen de seguridad
+    
         for enemy in self.enemies:
-            if enemy['rect'].bottom >= self.player_y:
+            # Verificar colisión real con el jugador, no solo posición Y
+            if enemy['rect'].colliderect(player_rect) or enemy['rect'].bottom >= self.HEIGHT - 60:
                 self.game_over = True
-                break
-        
+                return
+    
         # Verificar si pasó de nivel
         if len(self.enemies) == 0:
             self.level_up()
@@ -212,14 +238,17 @@ class Game:
     def level_up(self):
         """Avanzar al siguiente nivel"""
         self.level += 1
-        self.enemy_speed += 0.3  # Aumentar dificultad
+        # Limitar la velocidad máxima para que no sea imposible
+        self.enemy_speed = min(2.5, 0.8 + (self.level * 0.2))  # Máximo 2.5 de velocidad
+        self.enemy_direction = 1 # Reseteamos la direccion
         
-        # Máximo 10 niveles
+        # Máximo 10 niveles // AGREGAR UN JEFE DESPUÉS DE CADA 10 NIVELES!!!
         if self.level <= 10:
             self.create_enemies()
         else:
             self.victory = True
     
+
     def reset_game(self):
         """Reiniciar el juego"""
         self.lives = 3
@@ -252,10 +281,8 @@ class Game:
             for enemy in self.enemies:
                 pygame.draw.rect(self.window, enemy['color'], enemy['rect'])
                 # Ojos del enemigo (detalles)
-                pygame.draw.circle(self.window, (0, 0, 0), 
-                                 (enemy['rect'].left + 10, enemy['rect'].top + 15), 5)
-                pygame.draw.circle(self.window, (0, 0, 0), 
-                                 (enemy['rect'].right - 10, enemy['rect'].top + 15), 5)
+                pygame.draw.circle(self.window, (0, 0, 0), (enemy['rect'].left + 10, enemy['rect'].top + 15), 5)
+                pygame.draw.circle(self.window, (0, 0, 0), (enemy['rect'].right - 10, enemy['rect'].top + 15), 5)
             
             # Dibujar balas del jugador
             for bullet in self.player_bullets:
@@ -281,8 +308,7 @@ class Game:
         score_text = self.font.render(f"Score: {self.score}", True, (255, 255, 255))
         lives_text = self.font.render(f"Lives: {self.lives}", True, (255, 255, 255))
         level_text = self.font.render(f"Level: {self.level}", True, (255, 255, 255))
-        bullets_text = self.font.render(f"Bullets: {self.bullets - len(self.player_bullets)}/{self.bullets}", 
-                                      True, (255, 255, 255))
+        bullets_text = self.font.render(f"Bullets: {self.bullets - len(self.player_bullets)}/{self.bullets}", True, (255, 255, 255))
         
         self.window.blit(score_text, (10, 10))
         self.window.blit(lives_text, (10, 40))
